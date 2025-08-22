@@ -609,7 +609,7 @@ fun RemoteJSTab(quickJSBridge: QuickJSBridge) {
 
 @Composable
 fun BytecodeTab(quickJSBridge: QuickJSBridge) {
-    var testScript by remember { mutableStateOf("const factorial = (n) => n <= 1 ? 1 : n * factorial(n - 1); factorial(5)") }
+    var testScript by remember { mutableStateOf("function factorial(n) { return n <= 1 ? 1 : n * factorial(n - 1); } factorial(5);") }
     var compilationResult by remember { mutableStateOf("") }
     var executionResult by remember { mutableStateOf("") }
     var isProcessing by remember { mutableStateOf(false) }

@@ -386,10 +386,7 @@ public:
             return false;
         }
 
-        // Add standard library
         js_std_add_helpers(context, 0, nullptr);
-        
-        // Add console support, timer polyfills, and HTTP polyfills
         addConsoleSupport(context);
         addTimerPolyfills(context);
         addHttpPolyfills(context);
@@ -413,34 +410,83 @@ public:
         if (JS_IsException(result)) {
             // Handle JavaScript exceptions
             JSValue exception = JS_GetException(context);
-            const char *exceptionStr = JS_ToCString(context, exception);
             std::string error = "JavaScript Error: ";
+            
+            // Try to get error message
+            const char *exceptionStr = JS_ToCString(context, exception);
             if (exceptionStr) {
                 error += exceptionStr;
                 JS_FreeCString(context, exceptionStr);
             } else {
-                error += "Unknown error";
+                // If direct conversion fails, try to get more details
+                JSValue nameVal = JS_GetPropertyStr(context, exception, "name");
+                JSValue messageVal = JS_GetPropertyStr(context, exception, "message");
+                
+                const char *name = JS_ToCString(context, nameVal);
+                const char *message = JS_ToCString(context, messageVal);
+                
+                if (name && message) {
+                    error += name;
+                    error += ": ";
+                    error += message;
+                } else if (name) {
+                    error += name;
+                } else if (message) {
+                    error += message;
+                } else {
+                    error += "Unknown error (exception object could not be converted to string)";
+                }
+                
+                if (name) JS_FreeCString(context, name);
+                if (message) JS_FreeCString(context, message);
+                JS_FreeValue(context, nameVal);
+                JS_FreeValue(context, messageVal);
             }
+            
             JS_FreeValue(context, exception);
             JS_FreeValue(context, result);
             LOGE("JavaScript execution error: %s", error.c_str());
             return error;
         }
 
-        // Await the result if it's a promise, otherwise just pass through
         result = js_std_await(context, result);
         
         // Check if awaiting resulted in an exception (promise rejection)
         if (JS_IsException(result)) {
             JSValue exception = JS_GetException(context);
-            const char *exceptionStr = JS_ToCString(context, exception);
             std::string error = "Promise Rejection: ";
+            
+            // Try to get error message
+            const char *exceptionStr = JS_ToCString(context, exception);
             if (exceptionStr) {
                 error += exceptionStr;
                 JS_FreeCString(context, exceptionStr);
             } else {
-                error += "Unknown error";
+                // If direct conversion fails, try to get more details
+                JSValue nameVal = JS_GetPropertyStr(context, exception, "name");
+                JSValue messageVal = JS_GetPropertyStr(context, exception, "message");
+                
+                const char *name = JS_ToCString(context, nameVal);
+                const char *message = JS_ToCString(context, messageVal);
+                
+                if (name && message) {
+                    error += name;
+                    error += ": ";
+                    error += message;
+                } else if (name) {
+                    error += name;
+                } else if (message) {
+                    error += message;
+                } else {
+                    error += "Unknown error (promise rejection could not be converted to string)";
+                }
+                
+                if (name) JS_FreeCString(context, name);
+                if (message) JS_FreeCString(context, message);
+                JS_FreeValue(context, nameVal);
+                JS_FreeValue(context, messageVal);
             }
+            
             JS_FreeValue(context, exception);
             JS_FreeValue(context, result);
             LOGE("Promise rejection error: %s", error.c_str());
@@ -485,7 +531,6 @@ public:
             return false;
         }
         
-        // Add standard library and polyfills to new context
         js_std_add_helpers(context, 0, nullptr);
         addConsoleSupport(context);
         addTimerPolyfills(context);

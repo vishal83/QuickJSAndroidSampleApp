@@ -431,16 +431,11 @@ class QuickJSBridge(private val context: android.content.Context) {
      * Run bytecode test
      */
     fun runBytecodeTest(callback: RemoteExecutionCallback) {
-        CoroutineScope(Dispatchers.IO).launch {
+        CoroutineScope(Dispatchers.Main).launch {
             try {
                 callback.onProgress("🔄 Testing bytecode compilation...")
                 
-                val testScript = """
-                    // Bytecode compilation test
-                    const factorial = (n) => n <= 1 ? 1 : n * factorial(n - 1);
-                    const result = factorial(5);
-                    "Factorial of 5 is: " + result;
-                """.trimIndent()
+                val testScript = "function factorial(n) { return n <= 1 ? 1 : n * factorial(n - 1); } factorial(5);"
                 
                 val startTime = System.currentTimeMillis()
                 
