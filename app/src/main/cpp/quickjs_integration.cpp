@@ -512,6 +512,78 @@ Java_com_quickjs_android_QuickJSBridge_resetContext(JNIEnv *env, jobject thiz) {
     return g_quickjsEngine ? g_quickjsEngine->resetContext() : false;
 }
 
+// Compile JavaScript to bytecode JNI function
+JNIEXPORT jbyteArray JNICALL
+Java_com_quickjs_android_QuickJSBridge_compileScript(JNIEnv *env, jobject thiz, jstring script) {
+    if (!g_quickjsEngine || !g_quickjsEngine->isInitialized()) {
+        LOGE("QuickJS not initialized for compilation");
+        return nullptr;
+    }
+    
+    const char *scriptStr = env->GetStringUTFChars(script, nullptr);
+    if (!scriptStr) {
+        LOGE("Failed to get script string");
+        return nullptr;
+    }
+    
+    LOGI("Bytecode compilation not yet implemented - returning mock bytecode");
+    
+    // Create a mock bytecode array for now
+    std::string mockBytecode = "MOCK_BYTECODE_" + std::string(scriptStr);
+    
+    env->ReleaseStringUTFChars(script, scriptStr);
+    
+    jbyteArray result = env->NewByteArray(mockBytecode.length());
+    if (result) {
+        env->SetByteArrayRegion(result, 0, mockBytecode.length(), 
+            reinterpret_cast<const jbyte*>(mockBytecode.c_str()));
+        LOGI("Mock bytecode created: %zu bytes", mockBytecode.length());
+    }
+    
+    return result;
+}
+
+// Execute bytecode JNI function
+JNIEXPORT jstring JNICALL
+Java_com_quickjs_android_QuickJSBridge_executeBytecode(JNIEnv *env, jobject thiz, jbyteArray bytecode) {
+    if (!g_quickjsEngine || !g_quickjsEngine->isInitialized()) {
+        LOGE("QuickJS not initialized for bytecode execution");
+        return env->NewStringUTF("Error: QuickJS not initialized");
+    }
+    
+    if (!bytecode) {
+        LOGE("Null bytecode provided");
+        return env->NewStringUTF("Error: Null bytecode");
+    }
+    
+    jsize bytecodeLength = env->GetArrayLength(bytecode);
+    if (bytecodeLength <= 0) {
+        LOGE("Empty bytecode provided");
+        return env->NewStringUTF("Error: Empty bytecode");
+    }
+    
+    // Get bytecode data
+    jbyte* bytecodeData = env->GetByteArrayElements(bytecode, nullptr);
+    if (!bytecodeData) {
+        LOGE("Failed to get bytecode data");
+        return env->NewStringUTF("Error: Failed to get bytecode data");
+    }
+    
+    // Check if this is mock bytecode
+    std::string bytecodeStr(reinterpret_cast<const char*>(bytecodeData), bytecodeLength);
+    env->ReleaseByteArrayElements(bytecode, bytecodeData, JNI_ABORT);
+    
+    if (bytecodeStr.find("MOCK_BYTECODE_") == 0) {
+        // Extract original script from mock bytecode
+        std::string originalScript = bytecodeStr.substr(14); // Remove "MOCK_BYTECODE_" prefix
+        LOGI("Executing mock bytecode as regular script");
+        return env->NewStringUTF(g_quickjsEngine->executeScript(originalScript).c_str());
+    }
+    
+    LOGI("Real bytecode execution not yet implemented");
+    return env->NewStringUTF("Error: Real bytecode execution not implemented");
+}
+
 // HTTP request JNI function
 JNIEXPORT jstring JNICALL
 Java_com_quickjs_android_QuickJSBridge_nativeHttpRequest(JNIEnv *env, jobject thiz, jstring url, jstring options) {
