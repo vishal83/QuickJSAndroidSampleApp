@@ -726,14 +726,14 @@ fun ExamplesTab(quickJSBridge: QuickJSBridge) {
     var executionResult by remember { mutableStateOf("") }
     
     val examples = mapOf(
-        "Arrow Functions" to "const sum = (a, b) => a + b; sum(15, 27)",
-        "Destructuring" to "const [a, b] = [10, 20]; const obj = {name: 'QuickJS'}; obj.name + ': ' + (a + b)",
-        "Template Literals" to "const name = 'QuickJS'; const version = '2025-04-26'; 'Hello ' + name + ' v' + version + '!'",
+        "Arrow Functions" to "(() => { const sum = (a, b) => a + b; return sum(15, 27); })()",
+        "Destructuring" to "(() => { const [a, b] = [10, 20]; const obj = {name: 'QuickJS'}; return obj.name + ': ' + (a + b); })()",
+        "Template Literals" to "(() => { const name = 'QuickJS'; const version = '2025-04-26'; return 'Hello ' + name + ' v' + version + '!'; })()",
         "Array Methods" to "[1, 2, 3, 4, 5].filter(x => x % 2 === 0).map(x => x * x).reduce((a, b) => a + b, 0)",
-        "Object Spread" to "const obj1 = {a: 1, b: 2}; const obj2 = {c: 3}; const merged = {...obj1, ...obj2}; JSON.stringify(merged)",
-        "Classes" to "class Calculator { add(a, b) { return a + b; } multiply(a, b) { return a * b; } } const calc = new Calculator(); calc.add(5, calc.multiply(3, 4))",
-        "Promises" to "const delay = (ms) => new Promise(resolve => setTimeout(() => resolve('Done!'), ms)); delay(100).then(result => result)",
-        "JSON Operations" to "const data = {users: [{name: 'Alice', age: 30}, {name: 'Bob', age: 25}]}; data.users.map(u => u.name).join(', ')"
+        "Object Spread" to "(() => { const obj1 = {a: 1, b: 2}; const obj2 = {c: 3}; const merged = {...obj1, ...obj2}; return JSON.stringify(merged); })()",
+        "Classes" to "(() => { class Calculator { add(a, b) { return a + b; } multiply(a, b) { return a * b; } } const calc = new Calculator(); return calc.add(5, calc.multiply(3, 4)); })()",
+        "Promises" to "((ms) => new Promise(resolve => setTimeout(() => resolve('Done!'), ms)))(100).then(result => result)",
+        "JSON Operations" to "(() => { const data = {users: [{name: 'Alice', age: 30}, {name: 'Bob', age: 25}]}; return data.users.map(u => u.name).join(', '); })()"
     )
     
     LazyColumn(
