@@ -28,6 +28,8 @@ static jmethodID g_handleHttpRequestMethod = nullptr;
 // Forward declarations
 static JSValue js_http_request(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv);
 void initializeHttpPolyfill(JNIEnv *env, jobject bridgeInstance);
+void addConsoleSupport(JSContext *ctx);
+void addTimerPolyfills(JSContext *ctx);
 void addHttpPolyfills(JSContext *ctx);
 
 // Native HTTP request function (called from JavaScript)
@@ -149,6 +151,49 @@ void addConsoleSupport(JSContext *ctx) {
         JSValue exception = JS_GetException(ctx);
         const char *exceptionStr = JS_ToCString(ctx, exception);
         LOGE("Failed to add console support: %s", exceptionStr ? exceptionStr : "Unknown error");
+        if (exceptionStr) JS_FreeCString(ctx, exceptionStr);
+        JS_FreeValue(ctx, exception);
+    }
+    JS_FreeValue(ctx, result);
+}
+
+// Add timer polyfills to QuickJS context
+void addTimerPolyfills(JSContext *ctx) {
+    // Add setTimeout/setInterval polyfills - simple immediate execution for demo
+    const char *timerPolyfill = R"(
+(function() {
+    // Simple setTimeout that executes immediately for demo purposes
+    // In a real implementation, this would use native threading/timers
+    globalThis.setTimeout = function(callback, delay) {
+        // For demo purposes, execute the callback immediately
+        // This allows promises with setTimeout to resolve
+        try {
+            callback();
+        } catch (e) {
+            throw e;
+        }
+        return 1; // return a dummy timer ID
+    };
+    
+    globalThis.clearTimeout = function(id) {
+        // No-op for demo
+    };
+    
+    globalThis.setInterval = function(callback, delay) {
+        return setTimeout(callback, delay);
+    };
+    
+    globalThis.clearInterval = function(id) {
+        clearTimeout(id);
+    };
+})();
+)";
+    
+    JSValue result = JS_Eval(ctx, timerPolyfill, strlen(timerPolyfill), "<timer-polyfill>", JS_EVAL_TYPE_GLOBAL);
+    if (JS_IsException(result)) {
+        JSValue exception = JS_GetException(ctx);
+        const char *exceptionStr = JS_ToCString(ctx, exception);
+        LOGE("Failed to add timer support: %s", exceptionStr ? exceptionStr : "Unknown error");
         if (exceptionStr) JS_FreeCString(ctx, exceptionStr);
         JS_FreeValue(ctx, exception);
     }
@@ -344,8 +389,9 @@ public:
         // Add standard library
         js_std_add_helpers(context, 0, nullptr);
         
-        // Add console support and HTTP polyfills
+        // Add console support, timer polyfills, and HTTP polyfills
         addConsoleSupport(context);
+        addTimerPolyfills(context);
         addHttpPolyfills(context);
 
         initialized = true;
@@ -378,6 +424,26 @@ public:
             JS_FreeValue(context, exception);
             JS_FreeValue(context, result);
             LOGE("JavaScript execution error: %s", error.c_str());
+            return error;
+        }
+
+        // Await the result if it's a promise, otherwise just pass through
+        result = js_std_await(context, result);
+        
+        // Check if awaiting resulted in an exception (promise rejection)
+        if (JS_IsException(result)) {
+            JSValue exception = JS_GetException(context);
+            const char *exceptionStr = JS_ToCString(context, exception);
+            std::string error = "Promise Rejection: ";
+            if (exceptionStr) {
+                error += exceptionStr;
+                JS_FreeCString(context, exceptionStr);
+            } else {
+                error += "Unknown error";
+            }
+            JS_FreeValue(context, exception);
+            JS_FreeValue(context, result);
+            LOGE("Promise rejection error: %s", error.c_str());
             return error;
         }
 
@@ -419,9 +485,10 @@ public:
             return false;
         }
         
-        // Add standard library and HTTP polyfills to new context
+        // Add standard library and polyfills to new context
         js_std_add_helpers(context, 0, nullptr);
         addConsoleSupport(context);
+        addTimerPolyfills(context);
         addHttpPolyfills(context);
         
         LOGI("QuickJS context reset successfully");
