@@ -4,8 +4,10 @@ import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import org.json.JSONObject
 
 /**
  * Bridge class for QuickJS JavaScript engine integration
@@ -476,22 +478,115 @@ class QuickJSBridge(private val context: android.content.Context) {
 
     /**
      * Handle HTTP requests from JavaScript (called by native code)
+     * Note: This runs synchronously from the JavaScript execution context
      */
     fun handleHttpRequest(url: String, optionsJson: String): String {
         Log.i(TAG, "Handling HTTP request: $url")
-        // Return a mock response for now
-        return """
-        {
-            "status": 200,
-            "statusText": "OK",
-            "ok": true,
-            "redirected": false,
-            "url": "$url",
-            "type": "basic",
-            "headers": {},
-            "body": "Mock response from QuickJS HTTP polyfill"
+        
+        return try {
+            // Parse the options JSON to extract request details
+            val options = try {
+                JSONObject(optionsJson)
+            } catch (e: Exception) {
+                Log.w(TAG, "Invalid options JSON, using defaults: $optionsJson")
+                JSONObject().apply {
+                    put("method", "GET")
+                    put("headers", JSONObject())
+                    put("body", JSONObject.NULL)
+                }
+            }
+            
+            val method = options.optString("method", "GET")
+            val headersJson = options.optJSONObject("headers") ?: JSONObject()
+            val body = if (options.isNull("body")) null else options.optString("body")
+            
+            // Convert headers to Map
+            val headers = mutableMapOf<String, String>()
+            headersJson.keys().forEach { key ->
+                headers[key] = headersJson.getString(key)
+            }
+            
+            // Use a blocking coroutine to make the HTTP request on a background thread
+            val result = runBlocking(Dispatchers.IO) {
+                try {
+                    // Make the HTTP request on IO dispatcher
+                    val response = httpService.makeRequest(url, method, headers, body)
+                    
+                    // Extract response details
+                    val statusCode = response.code
+                    val statusText = response.message
+                    val responseHeaders = mutableMapOf<String, String>()
+                    response.headers.forEach { pair ->
+                        responseHeaders[pair.first] = pair.second
+                    }
+                    
+                    // Get response body
+                    val responseBody = response.body?.string() ?: ""
+                    response.close()
+                    
+                    // Return the response in the format expected by the fetch polyfill
+                    // Use JSONObject to properly handle all escaping
+                    val responseJson = JSONObject().apply {
+                        put("status", statusCode)
+                        put("statusText", statusText)
+                        put("ok", statusCode in 200..299)
+                        put("redirected", false)
+                        put("url", url)
+                        put("type", "basic")
+                        put("headers", JSONObject(responseHeaders as Map<*, *>))
+                        put("body", responseBody)  // JSONObject will handle proper escaping
+                    }
+                    
+                    responseJson.toString()
+                    
+                } catch (e: Exception) {
+                    Log.e(TAG, "HTTP request failed: $url", e)
+                    
+                    // Return an error response using JSONObject for proper escaping
+                    val errorMessage = e.message ?: "Unknown error"
+                    val errorBody = JSONObject().apply {
+                        put("error", errorMessage)
+                    }.toString()
+                    
+                    val errorResponseJson = JSONObject().apply {
+                        put("status", 0)
+                        put("statusText", "Network Error")
+                        put("ok", false)
+                        put("redirected", false)
+                        put("url", url)
+                        put("type", "error")
+                        put("headers", JSONObject())
+                        put("body", errorBody)
+                    }
+                    
+                    errorResponseJson.toString()
+                }
+            }
+            
+            result
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "HTTP request wrapper failed: $url", e)
+            
+            // Return an error response for any wrapper failures using JSONObject
+            val errorMessage = e.message ?: "Unknown error"
+            val errorBody = JSONObject().apply {
+                put("error", errorMessage)
+            }.toString()
+            
+            val errorResponseJson = JSONObject().apply {
+                put("status", 0)
+                put("statusText", "Network Error")
+                put("ok", false)
+                put("redirected", false)
+                put("url", url)
+                put("type", "error")
+                put("headers", JSONObject())
+                put("body", errorBody)
+            }
+            
+            errorResponseJson.toString()
         }
-        """.trimIndent()
     }
 
     /**
