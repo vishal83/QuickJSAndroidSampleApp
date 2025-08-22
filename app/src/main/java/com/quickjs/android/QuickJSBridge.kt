@@ -360,12 +360,16 @@ class QuickJSBridge(private val context: android.content.Context) {
      */
     fun getPopularJavaScriptUrls(): Map<String, String> {
         return mapOf(
-            "Lodash Utility Library" to "https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js",
-            "Moment.js Date Library" to "https://cdn.jsdelivr.net/npm/moment@2.29.4/moment.min.js",
-            "Axios HTTP Client" to "https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js",
-            "UUID Generator" to "https://cdn.jsdelivr.net/npm/uuid@9.0.1/dist/umd/uuid.min.js",
-            "Test Remote Script" to "http://localhost:8000/test_remote_script.js",
-            "Test HTTP Polyfills" to "http://localhost:8000/test_fetch_polyfill.js",
+            "Basic Remote Script" to "http://localhost:8000/test_remote_script.js",
+            "HTTP Polyfills Test" to "http://localhost:8000/test_fetch_polyfill.js",
+            "Cache System (Fast)" to "http://localhost:8000/test_cache_system_fast.js",
+            "Cache System (Full)" to "http://localhost:8000/test_cache_system.js",
+            "Bytecode Demo" to "http://localhost:8000/test_bytecode_demo.js",
+            "Cache Statistics" to "http://localhost:8000/test_cache_stats.js",
+            "Simple Fetch Test" to "http://localhost:8000/simple_fetch_test.js",
+            "Simple Return Test" to "http://localhost:8000/test_simple_return.js",
+            "Lodash Library" to "https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js",
+            "Moment.js Library" to "https://cdn.jsdelivr.net/npm/moment@2.29.4/moment.min.js",
             "Test Bytecode Compilation" to "BYTECODE_TEST"
         )
     }
