@@ -560,6 +560,10 @@ public:
     bool isInitialized() const {
         return initialized && runtime && context;
     }
+    
+    JSContext* getContext() const {
+        return context;
+    }
 };
 
 static QuickJSEngine *g_quickjsEngine = nullptr;
@@ -638,19 +642,56 @@ Java_com_quickjs_android_QuickJSBridge_compileScript(JNIEnv *env, jobject thiz, 
         return nullptr;
     }
     
-    LOGI("Bytecode compilation not yet implemented - returning mock bytecode");
+    LOGI("Compiling JavaScript to real QuickJS bytecode");
     
-    // Create a mock bytecode array for now
-    std::string mockBytecode = "MOCK_BYTECODE_" + std::string(scriptStr);
+    JSContext *context = g_quickjsEngine->getContext();
+    if (!context) {
+        LOGE("Failed to get QuickJS context");
+        env->ReleaseStringUTFChars(script, scriptStr);
+        return nullptr;
+    }
+    
+    // Compile script to bytecode using QuickJS API
+    JSValue compiledObj = JS_Eval(context, scriptStr, strlen(scriptStr), 
+                                  "<bytecode>", JS_EVAL_FLAG_COMPILE_ONLY);
     
     env->ReleaseStringUTFChars(script, scriptStr);
     
-    jbyteArray result = env->NewByteArray(mockBytecode.length());
-    if (result) {
-        env->SetByteArrayRegion(result, 0, mockBytecode.length(), 
-            reinterpret_cast<const jbyte*>(mockBytecode.c_str()));
-        LOGI("Mock bytecode created: %zu bytes", mockBytecode.length());
+    if (JS_IsException(compiledObj)) {
+        // Handle compilation error
+        JSValue exception = JS_GetException(context);
+        const char *errorStr = JS_ToCString(context, exception);
+        LOGE("Bytecode compilation failed: %s", errorStr ? errorStr : "Unknown error");
+        if (errorStr) JS_FreeCString(context, errorStr);
+        JS_FreeValue(context, exception);
+        JS_FreeValue(context, compiledObj);
+        return nullptr;
     }
+    
+    // Serialize compiled object to bytecode
+    size_t bytecodeSize;
+    uint8_t *bytecodeData = JS_WriteObject(context, &bytecodeSize, compiledObj, 
+                                          JS_WRITE_OBJ_BYTECODE);
+    
+    JS_FreeValue(context, compiledObj);
+    
+    if (!bytecodeData) {
+        LOGE("Failed to serialize bytecode");
+        return nullptr;
+    }
+    
+    // Create Java byte array
+    jbyteArray result = env->NewByteArray(bytecodeSize);
+    if (result) {
+        env->SetByteArrayRegion(result, 0, bytecodeSize, 
+            reinterpret_cast<const jbyte*>(bytecodeData));
+        LOGI("Real bytecode created: %zu bytes", bytecodeSize);
+    } else {
+        LOGE("Failed to create Java byte array");
+    }
+    
+    // Free the bytecode data
+    js_free(context, bytecodeData);
     
     return result;
 }
@@ -681,19 +722,91 @@ Java_com_quickjs_android_QuickJSBridge_executeBytecode(JNIEnv *env, jobject thiz
         return env->NewStringUTF("Error: Failed to get bytecode data");
     }
     
-    // Check if this is mock bytecode
-    std::string bytecodeStr(reinterpret_cast<const char*>(bytecodeData), bytecodeLength);
-    env->ReleaseByteArrayElements(bytecode, bytecodeData, JNI_ABORT);
+    LOGI("Executing real QuickJS bytecode");
     
-    if (bytecodeStr.find("MOCK_BYTECODE_") == 0) {
-        // Extract original script from mock bytecode
-        std::string originalScript = bytecodeStr.substr(14); // Remove "MOCK_BYTECODE_" prefix
-        LOGI("Executing mock bytecode as regular script");
-        return env->NewStringUTF(g_quickjsEngine->executeScript(originalScript).c_str());
+    JSContext *context = g_quickjsEngine->getContext();
+    if (!context) {
+        LOGE("Failed to get QuickJS context");
+        env->ReleaseByteArrayElements(bytecode, bytecodeData, JNI_ABORT);
+        return env->NewStringUTF("Error: Failed to get QuickJS context");
     }
     
-    LOGI("Real bytecode execution not yet implemented");
-    return env->NewStringUTF("Error: Real bytecode execution not implemented");
+    // Deserialize bytecode to JSValue
+    JSValue compiledObj = JS_ReadObject(context, 
+                                       reinterpret_cast<const uint8_t*>(bytecodeData), 
+                                       bytecodeLength, 
+                                       JS_READ_OBJ_BYTECODE);
+    
+    env->ReleaseByteArrayElements(bytecode, bytecodeData, JNI_ABORT);
+    
+    if (JS_IsException(compiledObj)) {
+        JSValue exception = JS_GetException(context);
+        const char *errorStr = JS_ToCString(context, exception);
+        LOGE("Bytecode deserialization failed: %s", errorStr ? errorStr : "Unknown error");
+        std::string error = "Error: Bytecode deserialization failed";
+        if (errorStr) {
+            error += ": ";
+            error += errorStr;
+            JS_FreeCString(context, errorStr);
+        }
+        JS_FreeValue(context, exception);
+        JS_FreeValue(context, compiledObj);
+        return env->NewStringUTF(error.c_str());
+    }
+    
+    // Execute the bytecode function
+    JSValue result = JS_EvalFunction(context, compiledObj);
+    
+    if (JS_IsException(result)) {
+        // Handle execution error
+        JSValue exception = JS_GetException(context);
+        const char *errorStr = JS_ToCString(context, exception);
+        LOGE("Bytecode execution failed: %s", errorStr ? errorStr : "Unknown error");
+        std::string error = "Error: Bytecode execution failed";
+        if (errorStr) {
+            error += ": ";
+            error += errorStr;
+            JS_FreeCString(context, errorStr);
+        }
+        JS_FreeValue(context, exception);
+        JS_FreeValue(context, result);
+        return env->NewStringUTF(error.c_str());
+    }
+    
+    // Wait for promises if needed (same as regular execution)
+    result = js_std_await(context, result);
+    
+    // Check if awaiting resulted in an exception (promise rejection)
+    if (JS_IsException(result)) {
+        JSValue exception = JS_GetException(context);
+        const char *errorStr = JS_ToCString(context, exception);
+        LOGE("Bytecode promise rejection: %s", errorStr ? errorStr : "Unknown error");
+        std::string error = "Promise Rejection: ";
+        if (errorStr) {
+            error += errorStr;
+            JS_FreeCString(context, errorStr);
+        } else {
+            error += "Unknown error";
+        }
+        JS_FreeValue(context, exception);
+        JS_FreeValue(context, result);
+        return env->NewStringUTF(error.c_str());
+    }
+    
+    // Convert result to string
+    const char *resultStr = JS_ToCString(context, result);
+    std::string resultString;
+    if (resultStr) {
+        resultString = resultStr;
+        JS_FreeCString(context, resultStr);
+    } else {
+        resultString = "undefined";
+    }
+    
+    JS_FreeValue(context, result);
+    
+    LOGI("Bytecode execution result: %s", resultString.c_str());
+    return env->NewStringUTF(resultString.c_str());
 }
 
 // HTTP request JNI function
